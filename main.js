@@ -200,6 +200,7 @@ const VIDKING_CONFIG = {
 
         var globalPlayerModal = null;
         var globalPlayerFrame = null;
+        var playerReturnToDetails = false;
 
         function closePlayer() {
             if (!globalPlayerFrame || !globalPlayerModal) {
@@ -208,6 +209,12 @@ const VIDKING_CONFIG = {
 
             globalPlayerFrame.attr('src', 'about:blank');
             globalPlayerModal.removeClass('is-visible').attr('aria-hidden', 'true');
+
+            if (playerReturnToDetails) {
+                playerReturnToDetails = false;
+                jQuery('.title-detail-modal').addClass('is-visible').attr('aria-hidden', 'false');
+                return;
+            }
 
             if (window.history && window.history.length > 1) {
                 setTimeout(function() {
@@ -232,6 +239,7 @@ const VIDKING_CONFIG = {
                 return;
             }
 
+            playerReturnToDetails = jQuery('.title-detail-modal.is-visible').length > 0;
             jQuery('.title-detail-modal').removeClass('is-visible').attr('aria-hidden', 'true');
             globalPlayerModal.css('z-index', '1003');
             globalPlayerFrame.attr('src', sourceUrl);
@@ -488,7 +496,6 @@ const VIDKING_CONFIG = {
                 var mediaType = jQuery(this).attr('data-media-type');
                 var mediaId = jQuery(this).attr('data-media-id');
                 var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
-                closeDetails();
                 openMediaPlayback(mediaType, mediaId, title);
             });
 
@@ -505,7 +512,6 @@ const VIDKING_CONFIG = {
                 var season = jQuery(this).attr('data-season');
                 var episode = jQuery(this).attr('data-episode');
                 var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
-                closeDetails();
                 openMediaPlayback(mediaType, mediaId, title, season, episode);
             });
         }
