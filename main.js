@@ -1,11 +1,11 @@
-const TMDB_CONFIG = {
+﻿const TMDB_CONFIG = {
     apiKey: '64672e64858d59449d385e4df7e296d1',
     baseUrl: 'https://api.themoviedb.org/3'
 };
 
 const NEXTSTREAM_CONFIG = {
     apiKey: 'nx_5e125687ef4051dc66ad95c6f19ffa1e',
-    baseUrl: 'https://api.codespecters.com/embed'
+    baseUrl: 'https://vidsrc.to/embed'
 };
 
 (function (jQuery){
@@ -199,15 +199,61 @@ const NEXTSTREAM_CONFIG = {
 
         setupTmdbSearch();
 
+        var globalPlayerModal = null;
+        var globalPlayerFrame = null;
+
+        function closePlayer() {
+            if (!globalPlayerFrame || !globalPlayerModal) {
+                return;
+            }
+
+            globalPlayerFrame.attr('src', 'about:blank');
+            globalPlayerModal.removeClass('is-visible').attr('aria-hidden', 'true');
+
+            if (window.history && window.history.length > 1) {
+                setTimeout(function() {
+                    window.history.back();
+                }, 50);
+                return;
+            }
+
+            setTimeout(function() {
+                window.location.href = document.referrer || 'index.html';
+            }, 50);
+        }
+
+        function openPlayer(sourceUrl) {
+            if (!sourceUrl) {
+                window.alert('The player could not be loaded right now.');
+                return;
+            }
+
+            if (!globalPlayerFrame || !globalPlayerModal) {
+                window.location.href = sourceUrl;
+                return;
+            }
+
+            jQuery('.title-detail-modal').removeClass('is-visible').attr('aria-hidden', 'true');
+            globalPlayerModal.css('z-index', '1003');
+            globalPlayerFrame.attr('src', sourceUrl);
+            globalPlayerModal.addClass('is-visible').attr('aria-hidden', 'false');
+        }
+
+        function openMediaPlayback(mediaType, mediaId, title) {
+            if (!mediaType || !mediaId) {
+                window.alert('This title cannot be played right now.');
+                return;
+            }
+
+            var playerUrl = NEXTSTREAM_CONFIG.baseUrl + '/' + mediaType + '/' + mediaId;
+            openPlayer(playerUrl);
+        }
+
         function setupVideoPlayer() {
             var playerModal = jQuery('<div class="video-player-modal" aria-hidden="true"><div class="video-player-dialog" role="dialog" aria-modal="true"><button type="button" class="video-player-close" aria-label="Close video">&times;</button><iframe class="video-player" title="Movie trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div></div>');
-            var player = playerModal.find('.video-player');
+            globalPlayerModal = playerModal;
+            globalPlayerFrame = playerModal.find('.video-player');
             jQuery('body').append(playerModal);
-
-            function closePlayer() {
-                player.attr('src', 'about:blank');
-                playerModal.removeClass('is-visible').attr('aria-hidden', 'true');
-            }
 
             function findTrailer(videos) {
                 return (videos || []).filter(function(video) {
@@ -223,8 +269,7 @@ const NEXTSTREAM_CONFIG = {
                     return;
                 }
 
-                player.attr('src', 'https://www.youtube.com/embed/' + encodeURIComponent(video.key) + '?autoplay=1&rel=0');
-                playerModal.addClass('is-visible').attr('aria-hidden', 'false');
+                openPlayer('https://www.youtube.com/embed/' + encodeURIComponent(video.key) + '?autoplay=1&rel=0');
             }
 
             function loadTrailer(trigger) {
@@ -283,13 +328,24 @@ const NEXTSTREAM_CONFIG = {
             });
         }
 
+        jQuery(document).on('click', '.direct-play', function(event) {
+            event.preventDefault();
+            openMediaPlayback(
+                jQuery(this).attr('data-media-type'),
+                jQuery(this).attr('data-media-id'),
+                jQuery(this).attr('data-title') || ''
+            );
+        });
+
         function setupSiteLinks() {
             jQuery('#top-menu a').each(function() {
                 var label = jQuery(this).text().trim().toLowerCase();
                 if (label === 'home') {
                     jQuery(this).attr('href', '#home');
-                } else if (label === 'movies' || label === 'shows') {
-                    jQuery(this).attr('href', 'search-results.html?q=' + encodeURIComponent(label));
+                } else if (label === 'movies') {
+                    jQuery(this).attr('href', 'search-results.html?type=movie');
+                } else if (label === 'shows') {
+                    jQuery(this).attr('href', 'search-results.html?type=tv');
                 }
             });
 
@@ -327,19 +383,59 @@ const NEXTSTREAM_CONFIG = {
                 })[0];
             }
 
+            function renderSeasonEpisodes(showId, seasonNumber, episodesContainer) {
+                if (!showId || !seasonNumber) {
+                    episodesContainer.html('<div class="title-detail-no-trailer">No season details available.</div>');
+                    return;
+                }
+
+                fetch(TMDB_CONFIG.baseUrl + '/tv/' + showId + '/season/' + seasonNumber + '?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US')
+                    .then(function(response) {
+                        if (!response.ok) { throw new Error('TMDB season request failed'); }
+                        return response.json();
+                    })
+                    .then(function(seasonData) {
+                        var episodes = seasonData.episodes || [];
+
+                        if (!episodes.length) {
+                            episodesContainer.html('<div class="title-detail-no-trailer">No episodes are available for this season yet.</div>');
+                            return;
+                        }
+
+                        episodesContainer.html(episodes.slice(0, 12).map(function(episode) {
+                            var airDate = episode.air_date || '';
+                            var overview = episode.overview || 'Episode details are not available yet.';
+                            var thumb = episode.still_path ? '<img src="https://image.tmdb.org/t/p/w300' + episode.still_path + '" alt="' + escapeHtml(episode.name || 'Episode thumbnail') + '" class="title-detail-episode-thumb">' : '<div class="title-detail-episode-thumb title-detail-episode-thumb-empty">E' + (episode.episode_number || '') + '</div>';
+                            return '<div class="title-detail-episode"><div class="title-detail-episode-visual"><div class="title-detail-episode-thumb-wrap">' + thumb + '<button type="button" class="title-detail-episode-play-overlay" data-media-type="tv" data-media-id="' + showId + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '" aria-label="Play episode"><i class="fa fa-play"></i></button></div></div><div class="title-detail-episode-body"><div class="title-detail-episode-header"><span class="title-detail-episode-index">E' + (episode.episode_number || '') + '</span><strong>' + escapeHtml(episode.name || 'Episode ' + (episode.episode_number || '')) + '</strong></div><div class="title-detail-episode-meta"><span>' + (airDate ? airDate.slice(0, 4) : 'New') + '</span><span>' + (episode.vote_average ? episode.vote_average.toFixed(1) : 'N/A') + '/10</span></div><p>' + escapeHtml(overview) + '</p><button type="button" class="title-detail-episode-play" data-media-type="tv" data-media-id="' + showId + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '"><i class="fa fa-play mr-2"></i>Play</button></div></div>';
+                        }).join(''));
+                    })
+                    .catch(function() {
+                        episodesContainer.html('<div class="title-detail-no-trailer">Episodes could not be loaded right now.</div>');
+                    });
+            }
+
             function renderDetails(result, details, videos) {
                 var title = result.title || result.name || 'Untitled';
                 var date = result.release_date || result.first_air_date || '';
                 var type = result.media_type === 'tv' ? 'TV show' : 'Movie';
                 var trailer = trailerFor(videos);
+                var isSeries = result.media_type === 'tv' || !!details.number_of_seasons;
                 var backdrop = details.backdrop_path || result.backdrop_path;
                 var backdropUrl = backdrop ? 'https://image.tmdb.org/t/p/original' + backdrop : '';
                 var posterUrl = result.poster_path ? 'https://image.tmdb.org/t/p/w500' + result.poster_path : '';
                 var genres = (details.genres || []).slice(0, 3).map(function(genre) { return genre.name; }).join(', ');
                 var trailerMarkup = trailer ? '<iframe class="title-detail-trailer" title="' + escapeHtml(title) + ' trailer" src="https://www.youtube.com/embed/' + encodeURIComponent(trailer.key) + '?autoplay=1&mute=1&rel=0&controls=0&loop=1&playlist=' + encodeURIComponent(trailer.key) + '" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>' : '<div class="title-detail-no-trailer">No YouTube trailer is available for this title yet.</div>';
+                var seasons = (details.seasons || []).filter(function(season) { return season.season_number && season.season_number > 0; });
+                var defaultSeason = seasons.length ? seasons[0].season_number : 1;
+                var seasonMarkup = isSeries ? '<div class="title-detail-series-panel"><div class="title-detail-series-header"><h2>Seasons & Episodes</h2></div><div class="title-detail-season-picker"><label for="title-detail-season-select">Season</label><select id="title-detail-season-select" class="title-detail-season-select" data-show-id="' + result.id + '">' + seasons.map(function(season) { return '<option value="' + season.season_number + '">Season ' + season.season_number + '</option>'; }).join('') + '</select></div><div class="title-detail-episodes" data-show-id="' + result.id + '" data-season="' + defaultSeason + '"></div></div>' : '';
 
                 detailModal.find('.title-detail-dialog').css('background-image', backdropUrl ? 'url("' + backdropUrl + '")' : 'none');
-                detailContent.html('<div class="title-detail-scrim"></div><div class="title-detail-body"><div class="title-detail-poster">' + (posterUrl ? '<img src="' + posterUrl + '" alt="' + escapeHtml(title) + ' poster">' : '') + '</div><div class="title-detail-copy"><span class="title-detail-brand">KIOKO</span><h1 id="title-detail-heading">' + escapeHtml(title) + '</h1><div class="title-detail-meta"><span>' + type + '</span><span>' + (date ? date.slice(0, 4) : 'New') + '</span><span>' + (result.vote_average ? result.vote_average.toFixed(1) : 'N/A') + '/10</span><span>' + escapeHtml(genres || 'Drama, Entertainment') + '</span></div><p>' + escapeHtml(details.overview || result.overview || 'Discover more about this title.') + '</p><div class="title-detail-actions"><button type="button" class="btn btn-hover title-detail-play" data-media-type="' + (result.media_type === 'tv' ? 'tv' : 'movie') + '" data-media-id="' + result.id + '"><i class="fa fa-play mr-2"></i>Play</button><button type="button" class="title-detail-trailer-toggle"><i class="fa fa-play mr-2"></i>' + (trailer ? 'Trailer playing' : 'Trailer unavailable') + '</button></div></div></div><div class="title-detail-video">' + trailerMarkup + '</div>');
+                detailContent.html('<div class="title-detail-scrim"></div><div class="title-detail-body"><div class="title-detail-poster">' + (posterUrl ? '<img src="' + posterUrl + '" alt="' + escapeHtml(title) + ' poster">' : '') + '</div><div class="title-detail-copy"><span class="title-detail-brand">KIOKO</span><h1 id="title-detail-heading">' + escapeHtml(title) + '</h1><div class="title-detail-meta"><span>' + type + '</span><span>' + (date ? date.slice(0, 4) : 'New') + '</span><span>' + (result.vote_average ? result.vote_average.toFixed(1) : 'N/A') + '/10</span><span>' + escapeHtml(genres || 'Drama, Entertainment') + '</span></div><p>' + escapeHtml(details.overview || result.overview || 'Discover more about this title.') + '</p><div class="title-detail-actions"><button type="button" class="btn btn-hover title-detail-play" data-media-type="' + (isSeries ? 'tv' : 'movie') + '" data-media-id="' + result.id + '" data-title="' + encodeURIComponent(title) + '"><i class="fa fa-play mr-2"></i>Play</button><button type="button" class="title-detail-trailer-toggle"><i class="fa fa-play mr-2"></i>' + (trailer ? 'Trailer playing' : 'Trailer unavailable') + '</button></div></div></div><div class="title-detail-video">' + trailerMarkup + '</div>' + seasonMarkup + '');
+
+                if (isSeries && seasons.length) {
+                    var episodesContainer = detailModal.find('.title-detail-episodes');
+                    renderSeasonEpisodes(result.id, defaultSeason, episodesContainer);
+                }
             }
 
             function openDetails(query) {
@@ -370,6 +466,7 @@ const NEXTSTREAM_CONFIG = {
                         detailContent.html('<div class="title-detail-loading">This title could not be loaded right now.</div>');
                     });
             }
+            window.openTitleDetails = openDetails;
 
             jQuery(document).on('click', 'a[href^="search-results.html?q="]:not(#top-menu a)', function(event) {
                 event.preventDefault();
@@ -386,8 +483,24 @@ const NEXTSTREAM_CONFIG = {
             detailModal.on('click', '.title-detail-play', function() {
                 var mediaType = jQuery(this).attr('data-media-type');
                 var mediaId = jQuery(this).attr('data-media-id');
-                var playerUrl = NEXTSTREAM_CONFIG.baseUrl + '/' + mediaType + '/' + mediaId + '?apikey=' + encodeURIComponent(NEXTSTREAM_CONFIG.apiKey);
-                window.location.href = playerUrl;
+                var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
+                closeDetails();
+                openMediaPlayback(mediaType, mediaId, title);
+            });
+
+            detailModal.on('change', '.title-detail-season-select', function() {
+                var showId = jQuery(this).attr('data-show-id');
+                var seasonNumber = jQuery(this).val();
+                var episodesContainer = detailModal.find('.title-detail-episodes');
+                renderSeasonEpisodes(showId, seasonNumber, episodesContainer);
+            });
+
+            detailModal.on('click', '.title-detail-episode-play, .title-detail-episode-play-overlay', function() {
+                var mediaType = jQuery(this).attr('data-media-type');
+                var mediaId = jQuery(this).attr('data-media-id');
+                var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
+                closeDetails();
+                openMediaPlayback(mediaType, mediaId, title);
             });
         }
 
@@ -422,7 +535,7 @@ const NEXTSTREAM_CONFIG = {
                         var rating = result.vote_average ? result.vote_average.toFixed(1) : 'N/A';
                         var searchUrl = 'search-results.html?q=' + encodeURIComponent(title);
 
-                        return '<li class="slide-item"><div class="block-images position-relative"><div class="img-box"><img src="' + tmdbImageBaseUrl + result.poster_path + '" class="img-fluid" alt="' + escapeHtml(title) + ' poster"></div><div class="block-description"><h6 class="iq-title"><a href="' + searchUrl + '">' + escapeHtml(title) + '</a></h6><div class="movie-time d-flex align-items-center my-2"><div class="badge badge-secondary p-1 mr-2">' + type + '</div><span class="text-white">' + (date ? date.slice(0, 4) : 'New') + ' &middot; ' + rating + '/10</span></div><div class="hover-buttons"><a href="' + searchUrl + '" class="btn btn-hover iq-button"><i class="fa fa-play mr-1"></i>View Details</a></div></div></div></li>';
+                        return '<li class="slide-item"><div class="block-images position-relative"><div class="img-box"><img src="' + tmdbImageBaseUrl + result.poster_path + '" class="img-fluid" alt="' + escapeHtml(title) + ' poster"></div><div class="block-description"><h6 class="iq-title"><a href="' + searchUrl + '">' + escapeHtml(title) + '</a></h6><div class="movie-time d-flex align-items-center my-2"><div class="badge badge-secondary p-1 mr-2">' + type + '</div><span class="text-white">' + (date ? date.slice(0, 4) : 'New') + ' &middot; ' + rating + '/10</span></div><div class="hover-buttons"><a href="#" data-media-type="' + result.media_type + '" data-media-id="' + result.id + '" data-title="' + escapeHtml(title) + '" class="btn btn-hover iq-button direct-play"><i class="fa fa-play mr-1"></i>Play</a><a href="' + searchUrl + '" class="btn btn-link">View Details</a></div></div></div></li>';
                     }).join(''));
 
                     picksSlider.slick({
@@ -477,7 +590,7 @@ const NEXTSTREAM_CONFIG = {
                         var rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A';
                         var searchUrl = 'search-results.html?q=' + encodeURIComponent(title);
 
-                        return '<li class="slide-item"><div class="block-images position-relative"><div class="img-box"><img src="' + tmdbImageBaseUrl + movie.poster_path + '" class="img-fluid" alt="' + escapeHtml(title) + ' poster"></div><div class="block-description"><h6 class="iq-title"><a href="' + searchUrl + '">' + escapeHtml(title) + '</a></h6><div class="movie-time d-flex align-items-center my-2"><div class="badge badge-secondary p-1 mr-2">Movie</div><span class="text-white">' + (releaseDate ? releaseDate.slice(0, 4) : 'New') + ' &middot; ' + rating + '/10</span></div><div class="hover-buttons"><a href="' + searchUrl + '" class="btn btn-hover iq-button"><i class="fa fa-play mr-1"></i>View Details</a></div></div></div></li>';
+                        return '<li class="slide-item"><div class="block-images position-relative"><div class="img-box"><img src="' + tmdbImageBaseUrl + movie.poster_path + '" class="img-fluid" alt="' + escapeHtml(title) + ' poster"></div><div class="block-description"><h6 class="iq-title"><a href="' + searchUrl + '">' + escapeHtml(title) + '</a></h6><div class="movie-time d-flex align-items-center my-2"><div class="badge badge-secondary p-1 mr-2">Movie</div><span class="text-white">' + (releaseDate ? releaseDate.slice(0, 4) : 'New') + ' &middot; ' + rating + '/10</span></div><div class="hover-buttons"><a href="#" data-media-type="movie" data-media-id="' + movie.id + '" data-title="' + escapeHtml(title) + '" class="btn btn-hover iq-button direct-play"><i class="fa fa-play mr-1"></i>Play</a><a href="' + searchUrl + '" class="btn btn-link">View Details</a></div></div></div></li>';
                     }).join(''));
 
                     popularSlider.slick({
@@ -533,7 +646,7 @@ const NEXTSTREAM_CONFIG = {
                         var rating = result.vote_average ? result.vote_average.toFixed(1) : 'N/A';
                         var searchUrl = 'search-results.html?q=' + encodeURIComponent(title);
 
-                        return '<li class="slide-item"><div class="block-images position-relative"><div class="img-box"><img src="' + tmdbImageBaseUrl + result.poster_path + '" class="img-fluid" alt="' + escapeHtml(title) + ' poster"></div><div class="block-description"><h6 class="iq-title"><a href="' + searchUrl + '">' + escapeHtml(title) + '</a></h6><div class="movie-time d-flex align-items-center my-2"><div class="badge badge-secondary p-1 mr-2">' + type + '</div><span class="text-white">' + (date ? date.slice(0, 4) : 'New') + ' &middot; ' + rating + '/10</span></div><div class="hover-buttons"><a href="' + searchUrl + '" class="btn btn-hover iq-button"><i class="fa fa-search mr-1"></i>View Details</a></div></div></div></li>';
+                        return '<li class="slide-item"><div class="block-images position-relative"><div class="img-box"><img src="' + tmdbImageBaseUrl + result.poster_path + '" class="img-fluid" alt="' + escapeHtml(title) + ' poster"></div><div class="block-description"><h6 class="iq-title"><a href="' + searchUrl + '">' + escapeHtml(title) + '</a></h6><div class="movie-time d-flex align-items-center my-2"><div class="badge badge-secondary p-1 mr-2">' + type + '</div><span class="text-white">' + (date ? date.slice(0, 4) : 'New') + ' &middot; ' + rating + '/10</span></div><div class="hover-buttons"><a href="#" data-media-type="' + result.media_type + '" data-media-id="' + result.id + '" data-title="' + escapeHtml(title) + '" class="btn btn-hover iq-button direct-play"><i class="fa fa-play mr-1"></i>Play</a><a href="' + searchUrl + '" class="btn btn-link">View Details</a></div></div></div></li>';
                     }).join(''));
 
                     suggestedSlider.slick({
@@ -599,7 +712,7 @@ const NEXTSTREAM_CONFIG = {
                         var releaseDate = movie.release_date || '';
                         var rating = movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A';
                         var searchUrl = 'search-results.html?q=' + encodeURIComponent(title);
-                        return '<li><div class="block-images position-relative"><a href="' + searchUrl + '"><img src="' + tmdbImageBaseUrl + movie.poster_path + '" class="img-fluid w-100" alt="' + escapeHtml(title) + ' poster"></a><div class="block-description"><h5>' + escapeHtml(title) + '</h5><div class="movie-time d-flex align-items-center my-2"><div class="badge badge-secondary p-1 mr-2">Movie</div><span class="text-white">' + (releaseDate ? releaseDate.slice(0, 4) : 'New') + ' &middot; ' + rating + '/10</span></div><div class="hover-buttons"><a href="' + searchUrl + '" class="btn btn-hover" tabindex="0"><i class="fa fa-play mr-1" aria-hidden="true"></i>View Details</a></div></div></div></li>';
+                        return '<li><div class="block-images position-relative"><a href="' + searchUrl + '"><img src="' + tmdbImageBaseUrl + movie.poster_path + '" class="img-fluid w-100" alt="' + escapeHtml(title) + ' poster"></a><div class="block-description"><h5>' + escapeHtml(title) + '</h5><div class="movie-time d-flex align-items-center my-2"><div class="badge badge-secondary p-1 mr-2">Movie</div><span class="text-white">' + (releaseDate ? releaseDate.slice(0, 4) : 'New') + ' &middot; ' + rating + '/10</span></div><div class="hover-buttons"><a href="#" data-media-type="movie" data-media-id="' + movie.id + '" data-title="' + escapeHtml(title) + '" class="btn btn-hover direct-play" tabindex="0"><i class="fa fa-play mr-1" aria-hidden="true"></i>Play</a><a href="' + searchUrl + '" class="btn btn-link" tabindex="0">View Details</a></div></div></div></li>';
                     }).join(''));
 
                     trendingSlider.slick({
@@ -665,7 +778,7 @@ const NEXTSTREAM_CONFIG = {
                         var backdropUrl = 'https://image.tmdb.org/t/p/original' + movie.backdrop_path;
                         var overview = movie.overview || 'Discover this movie now playing in cinemas and streaming services.';
 
-                        return '<div class="slide slick-bg" style="background-image: url(' + backdropUrl + ');"><div class="container-fluid position-relative h-100"><div class="slider-inner h-100"><div class="row align-items-center h--100"><div class="col-xl-6 col-lg-12 col-md-12"><div class="channel-logo" data-animation-in="fadeInLeft" data-delay-in="0.5"><img src="images/logo.png" class="c-logo" alt=""></div><h1 class="slider-text big-title title text-uppercase" data-animation-in="fadeInLeft" data-delay-in="0.6">' + escapeHtml(title) + '</h1><div class="d-flex flex-wrap align-items-center fadeInLeft animated" data-animation-in="fadeInLeft"><div class="slider-ratting d-flex align-items-center mr-4 mt-2 mt-md-3"><ul class="ratting-start p-0 m-0 list-inline text-primary d-flex align-items-center"><li><i class="fa fa-star"></i></li><li><i class="fa fa-star"></i></li><li><i class="fa fa-star"></i></li><li><i class="fa fa-star"></i></li><li><i class="fa fa-star-half-o"></i></li></ul><span class="text-white ml-2">' + rating + '/10</span></div><div class="d-flex align-items-center mt-2 mt-md-3"><span class="badge badge-secondary p-2">13+</span><span class="ml-3">' + (releaseDate ? releaseDate.slice(0, 4) : 'Now playing') + '</span></div></div><p data-animation-in="fadeInUp">' + escapeHtml(overview) + '</p><div class="d-flex align-items-center r-mb-23 mt-4" data-animation-in="fadeInUp"><a href="' + searchUrl + '" class="btn btn-hover iq-button"><i class="fa fa-play mr-3"></i>View Details</a></div></div><div class="col-xl-5 col-lg-12 col-md-12 trailor-video"><a href="video/trailer.mp4" data-media-type="movie" data-media-id="' + movie.id + '" data-title="' + escapeHtml(title) + '" class="video-open playbtn"><img src="images/play.png" class="play" alt=""><span class="w-trailor">Watch Trailer</span></a></div></div></div></div></div>';
+                        return '<div class="slide slick-bg" style="background-image: url(' + backdropUrl + ');"><div class="container-fluid position-relative h-100"><div class="slider-inner h-100"><div class="row align-items-center h--100"><div class="col-xl-6 col-lg-12 col-md-12"><div class="channel-logo" data-animation-in="fadeInLeft" data-delay-in="0.5"><img src="images/logo.png" class="c-logo" alt=""></div><h1 class="slider-text big-title title text-uppercase" data-animation-in="fadeInLeft" data-delay-in="0.6">' + escapeHtml(title) + '</h1><div class="d-flex flex-wrap align-items-center fadeInLeft animated" data-animation-in="fadeInLeft"><div class="slider-ratting d-flex align-items-center mr-4 mt-2 mt-md-3"><ul class="ratting-start p-0 m-0 list-inline text-primary d-flex align-items-center"><li><i class="fa fa-star"></i></li><li><i class="fa fa-star"></i></li><li><i class="fa fa-star"></i></li><li><i class="fa fa-star"></i></li><li><i class="fa fa-star-half-o"></i></li></ul><span class="text-white ml-2">' + rating + '/10</span></div><div class="d-flex align-items-center mt-2 mt-md-3"><span class="badge badge-secondary p-2">13+</span><span class="ml-3">' + (releaseDate ? releaseDate.slice(0, 4) : 'Now playing') + '</span></div></div><p data-animation-in="fadeInUp">' + escapeHtml(overview) + '</p><div class="d-flex align-items-center r-mb-23 mt-4" data-animation-in="fadeInUp"><a href="#" data-media-type="movie" data-media-id="' + movie.id + '" data-title="' + escapeHtml(title) + '" class="btn btn-hover iq-button direct-play"><i class="fa fa-play mr-3"></i>Play Now</a><a href="' + searchUrl + '" class="btn btn-link">View Details</a></div></div><div class="col-xl-5 col-lg-12 col-md-12 trailor-video"><a href="#" data-media-type="movie" data-media-id="' + movie.id + '" data-title="' + escapeHtml(title) + '" class="video-open playbtn"><img src="images/play.png" class="play" alt=""><span class="w-trailor">Watch Trailer</span></a></div></div></div></div></div>';
                     }).join(''));
 
                     homeSlider.slick({
@@ -729,7 +842,7 @@ const NEXTSTREAM_CONFIG = {
                         var backdropUrl = 'https://image.tmdb.org/t/p/original' + movie.backdrop_path;
                         var tabId = 'tmdb-trending-data-' + index;
 
-                        return '<li><div class="tranding-block position-relative" style="background-image: url(' + backdropUrl + ');"><div class="trending-custom-tab"><div class="tab-title-info position-relative"><ul class="trending-pills d-flex nav nav-pills justify-content-center align-items-center text-center" role="tablist"><li class="nav-item"><a href="#' + tabId + '" class="nav-link active show" data-toggle="pill" role="tab">Overview</a></li><li class="nav-item"><a href="' + searchUrl + '" class="nav-link">Details</a></li></ul></div><div class="trending-content"><div id="' + tabId + '" class="overview-tab tab-pane fade active show"><div class="trending-info align-items-center w-100 animated fadeInUp"><a href="' + searchUrl + '" tabindex="0"><div class="res-logo"><div class="channel-logo"><img src="images/logo.png" class="c-logo" alt=""></div></div></a><h1 class="trending-text big-title text-uppercase">' + escapeHtml(title) + '</h1><div class="d-flex align-items-center text-white text-detail"><span class="badge badge-secondary p-3">Movie</span><span class="ml-3">' + (releaseDate ? releaseDate.slice(0, 4) : 'Now trending') + '</span><span class="trending-year">' + rating + '/10</span></div><div class="d-flex align-items-center series mb-4"><span class="text-gold">Trending this week</span></div><p class="trending-dec">' + escapeHtml(overview) + '</p><div class="p-btns"><div class="d-flex align-items-center p-0"><a href="' + searchUrl + '" class="btn btn-hover mr-2" tabindex="0"><i class="fa fa-search mr-2"></i>View Details</a><a href="video/trailer.mp4" data-media-type="movie" data-media-id="' + movie.id + '" data-title="' + escapeHtml(title) + '" class="btn btn-link video-open" tabindex="0"><i class="fa fa-play mr-2"></i>Watch Trailer</a></div></div></div></div></div></div></div></li>';
+                        return '<li><div class="tranding-block position-relative" style="background-image: url(' + backdropUrl + ');"><div class="trending-custom-tab"><div class="tab-title-info position-relative"><ul class="trending-pills d-flex nav nav-pills justify-content-center align-items-center text-center" role="tablist"><li class="nav-item"><a href="#' + tabId + '" class="nav-link active show" data-toggle="pill" role="tab">Overview</a></li><li class="nav-item"><a href="' + searchUrl + '" class="nav-link">Details</a></li></ul></div><div class="trending-content"><div id="' + tabId + '" class="overview-tab tab-pane fade active show"><div class="trending-info align-items-center w-100 animated fadeInUp"><a href="' + searchUrl + '" tabindex="0"><div class="res-logo"><div class="channel-logo"><img src="images/logo.png" class="c-logo" alt=""></div></div></a><h1 class="trending-text big-title text-uppercase">' + escapeHtml(title) + '</h1><div class="d-flex align-items-center text-white text-detail"><span class="badge badge-secondary p-3">Movie</span><span class="ml-3">' + (releaseDate ? releaseDate.slice(0, 4) : 'Now trending') + '</span><span class="trending-year">' + rating + '/10</span></div><div class="d-flex align-items-center series mb-4"><span class="text-gold">Trending this week</span></div><p class="trending-dec">' + escapeHtml(overview) + '</p><div class="p-btns"><div class="d-flex align-items-center p-0"><a href="' + searchUrl + '" class="btn btn-hover mr-2" tabindex="0"><i class="fa fa-search mr-2"></i>View Details</a><a href="#" data-media-type="movie" data-media-id="' + movie.id + '" data-title="' + escapeHtml(title) + '" class="btn btn-link video-open" tabindex="0"><i class="fa fa-play mr-2"></i>Watch Trailer</a></div></div></div></div></div></div></div></li>';
                     }).join(''));
 
                     trendingSlider.slick({
@@ -760,9 +873,18 @@ const NEXTSTREAM_CONFIG = {
                 });
         }
 
+        jQuery('#home-slider, #iq-favorites .favorites-slider, #iq-upcoming-movie .favorites-slider, #top-ten-slider, #top-ten-slider-nav, #iq-suggested-movies .favorites-slider, #trending-slider-nav, #trending-slider').empty();
+        jQuery('#parallex, #iq-suggested').remove();
+        jQuery('.iq-sub-dropdown').remove();
+        jQuery('body').removeClass('tmdb-live-loading');
+
         setupVideoPlayer();
         setupSiteLinks();
         setupTitleDetails();
+        var requestedTitle = new URLSearchParams(window.location.search).get('title');
+        if (requestedTitle && window.openTitleDetails) {
+            window.openTitleDetails(requestedTitle);
+        }
         setupTopPicks();
         setupPopularMovies();
         setupSuggestedMovies();
