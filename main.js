@@ -3,9 +3,8 @@
     baseUrl: 'https://api.themoviedb.org/3'
 };
 
-const NEXTSTREAM_CONFIG = {
-    apiKey: 'nx_5e125687ef4051dc66ad95c6f19ffa1e',
-    baseUrl: 'https://vidsrc.to/embed'
+const VIDKING_CONFIG = {
+    baseUrl: 'https://www.vidking.net/embed'
 };
 
 (function (jQuery){
@@ -239,13 +238,16 @@ const NEXTSTREAM_CONFIG = {
             globalPlayerModal.addClass('is-visible').attr('aria-hidden', 'false');
         }
 
-        function openMediaPlayback(mediaType, mediaId, title) {
+        function openMediaPlayback(mediaType, mediaId, title, season, episode) {
             if (!mediaType || !mediaId) {
                 window.alert('This title cannot be played right now.');
                 return;
             }
 
-            var playerUrl = NEXTSTREAM_CONFIG.baseUrl + '/' + mediaType + '/' + mediaId;
+            var playerUrl = VIDKING_CONFIG.baseUrl + '/' + mediaType + '/' + mediaId;
+            if (mediaType === 'tv') {
+                playerUrl += '/' + (Number(season) || 1) + '/' + (Number(episode) || 1);
+            }
             openPlayer(playerUrl);
         }
 
@@ -333,7 +335,9 @@ const NEXTSTREAM_CONFIG = {
             openMediaPlayback(
                 jQuery(this).attr('data-media-type'),
                 jQuery(this).attr('data-media-id'),
-                jQuery(this).attr('data-title') || ''
+                jQuery(this).attr('data-title') || '',
+                jQuery(this).attr('data-season'),
+                jQuery(this).attr('data-episode')
             );
         });
 
@@ -406,7 +410,7 @@ const NEXTSTREAM_CONFIG = {
                             var airDate = episode.air_date || '';
                             var overview = episode.overview || 'Episode details are not available yet.';
                             var thumb = episode.still_path ? '<img src="https://image.tmdb.org/t/p/w300' + episode.still_path + '" alt="' + escapeHtml(episode.name || 'Episode thumbnail') + '" class="title-detail-episode-thumb">' : '<div class="title-detail-episode-thumb title-detail-episode-thumb-empty">E' + (episode.episode_number || '') + '</div>';
-                            return '<div class="title-detail-episode"><div class="title-detail-episode-visual"><div class="title-detail-episode-thumb-wrap">' + thumb + '<button type="button" class="title-detail-episode-play-overlay" data-media-type="tv" data-media-id="' + showId + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '" aria-label="Play episode"><i class="fa fa-play"></i></button></div></div><div class="title-detail-episode-body"><div class="title-detail-episode-header"><span class="title-detail-episode-index">E' + (episode.episode_number || '') + '</span><strong>' + escapeHtml(episode.name || 'Episode ' + (episode.episode_number || '')) + '</strong></div><div class="title-detail-episode-meta"><span>' + (airDate ? airDate.slice(0, 4) : 'New') + '</span><span>' + (episode.vote_average ? episode.vote_average.toFixed(1) : 'N/A') + '/10</span></div><p>' + escapeHtml(overview) + '</p><button type="button" class="title-detail-episode-play" data-media-type="tv" data-media-id="' + showId + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '"><i class="fa fa-play mr-2"></i>Play</button></div></div>';
+                            return '<div class="title-detail-episode"><div class="title-detail-episode-visual"><div class="title-detail-episode-thumb-wrap">' + thumb + '<button type="button" class="title-detail-episode-play-overlay" data-media-type="tv" data-media-id="' + showId + '" data-season="' + seasonNumber + '" data-episode="' + (episode.episode_number || 1) + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '" aria-label="Play episode"><i class="fa fa-play"></i></button></div></div><div class="title-detail-episode-body"><div class="title-detail-episode-header"><span class="title-detail-episode-index">E' + (episode.episode_number || '') + '</span><strong>' + escapeHtml(episode.name || 'Episode ' + (episode.episode_number || '')) + '</strong></div><div class="title-detail-episode-meta"><span>' + (airDate ? airDate.slice(0, 4) : 'New') + '</span><span>' + (episode.vote_average ? episode.vote_average.toFixed(1) : 'N/A') + '/10</span></div><p>' + escapeHtml(overview) + '</p><button type="button" class="title-detail-episode-play" data-media-type="tv" data-media-id="' + showId + '" data-season="' + seasonNumber + '" data-episode="' + (episode.episode_number || 1) + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '"><i class="fa fa-play mr-2"></i>Play</button></div></div>';
                         }).join(''));
                     })
                     .catch(function() {
@@ -498,9 +502,11 @@ const NEXTSTREAM_CONFIG = {
             detailModal.on('click', '.title-detail-episode-play, .title-detail-episode-play-overlay', function() {
                 var mediaType = jQuery(this).attr('data-media-type');
                 var mediaId = jQuery(this).attr('data-media-id');
+                var season = jQuery(this).attr('data-season');
+                var episode = jQuery(this).attr('data-episode');
                 var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
                 closeDetails();
-                openMediaPlayback(mediaType, mediaId, title);
+                openMediaPlayback(mediaType, mediaId, title, season, episode);
             });
         }
 
