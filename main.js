@@ -245,19 +245,17 @@ const NEXTSTREAM_CONFIG = {
             var playerUrl = NEXTSTREAM_CONFIG.baseUrl;
 
             if (mediaType === 'movie') {
-                playerUrl += '/movie/' + mediaId;
+                playerUrl += '/movie/' + mediaId + '?autonext=true';
             } else {
                 playerUrl += '/tv/' + mediaId;
-                var tvParams = [];
+                var tvParams = ['autonext=true'];
                 if (season) {
                     tvParams.push('s=' + encodeURIComponent(season));
                 }
                 if (episode) {
                     tvParams.push('e=' + encodeURIComponent(episode));
                 }
-                if (tvParams.length) {
-                    playerUrl += '?' + tvParams.join('&');
-                }
+                playerUrl += '?' + tvParams.join('&');
             }
 
             openPlayer(playerUrl);
