@@ -3,8 +3,9 @@
     baseUrl: 'https://api.themoviedb.org/3'
 };
 
-const VIDKING_CONFIG = {
-    baseUrl: 'https://www.vidking.net/embed'
+const NEXTSTREAM_CONFIG = {
+    apiKey: 'nx_5e125687ef4051dc66ad95c6f19ffa1e',
+    baseUrl: 'https://vidsrc.to/embed'
 };
 
 (function (jQuery){
@@ -200,7 +201,7 @@ const VIDKING_CONFIG = {
 
         var globalPlayerModal = null;
         var globalPlayerFrame = null;
-        var playerReturnToDetails = false;
+        var lastPlaybackTitle = '';
 
         function closePlayer() {
             if (!globalPlayerFrame || !globalPlayerModal) {
@@ -210,22 +211,11 @@ const VIDKING_CONFIG = {
             globalPlayerFrame.attr('src', 'about:blank');
             globalPlayerModal.removeClass('is-visible').attr('aria-hidden', 'true');
 
-            if (playerReturnToDetails) {
-                playerReturnToDetails = false;
-                jQuery('.title-detail-modal').addClass('is-visible').attr('aria-hidden', 'false');
-                return;
-            }
-
-            if (window.history && window.history.length > 1) {
+            if (lastPlaybackTitle && window.openTitleDetails) {
                 setTimeout(function() {
-                    window.history.back();
+                    window.openTitleDetails(lastPlaybackTitle);
                 }, 50);
-                return;
             }
-
-            setTimeout(function() {
-                window.location.href = document.referrer || 'index.html';
-            }, 50);
         }
 
         function openPlayer(sourceUrl) {
@@ -239,23 +229,20 @@ const VIDKING_CONFIG = {
                 return;
             }
 
-            playerReturnToDetails = jQuery('.title-detail-modal.is-visible').length > 0;
             jQuery('.title-detail-modal').removeClass('is-visible').attr('aria-hidden', 'true');
             globalPlayerModal.css('z-index', '1003');
             globalPlayerFrame.attr('src', sourceUrl);
             globalPlayerModal.addClass('is-visible').attr('aria-hidden', 'false');
         }
 
-        function openMediaPlayback(mediaType, mediaId, title, season, episode) {
+        function openMediaPlayback(mediaType, mediaId, title) {
             if (!mediaType || !mediaId) {
                 window.alert('This title cannot be played right now.');
                 return;
             }
 
-            var playerUrl = VIDKING_CONFIG.baseUrl + '/' + mediaType + '/' + mediaId;
-            if (mediaType === 'tv') {
-                playerUrl += '/' + (Number(season) || 1) + '/' + (Number(episode) || 1);
-            }
+            lastPlaybackTitle = (title || '').trim();
+            var playerUrl = NEXTSTREAM_CONFIG.baseUrl + '/' + mediaType + '/' + mediaId;
             openPlayer(playerUrl);
         }
 
@@ -279,6 +266,7 @@ const VIDKING_CONFIG = {
                     return;
                 }
 
+                lastPlaybackTitle = '';
                 openPlayer('https://www.youtube.com/embed/' + encodeURIComponent(video.key) + '?autoplay=1&rel=0');
             }
 
@@ -343,9 +331,7 @@ const VIDKING_CONFIG = {
             openMediaPlayback(
                 jQuery(this).attr('data-media-type'),
                 jQuery(this).attr('data-media-id'),
-                jQuery(this).attr('data-title') || '',
-                jQuery(this).attr('data-season'),
-                jQuery(this).attr('data-episode')
+                jQuery(this).attr('data-title') || ''
             );
         });
 
@@ -418,7 +404,7 @@ const VIDKING_CONFIG = {
                             var airDate = episode.air_date || '';
                             var overview = episode.overview || 'Episode details are not available yet.';
                             var thumb = episode.still_path ? '<img src="https://image.tmdb.org/t/p/w300' + episode.still_path + '" alt="' + escapeHtml(episode.name || 'Episode thumbnail') + '" class="title-detail-episode-thumb">' : '<div class="title-detail-episode-thumb title-detail-episode-thumb-empty">E' + (episode.episode_number || '') + '</div>';
-                            return '<div class="title-detail-episode"><div class="title-detail-episode-visual"><div class="title-detail-episode-thumb-wrap">' + thumb + '<button type="button" class="title-detail-episode-play-overlay" data-media-type="tv" data-media-id="' + showId + '" data-season="' + seasonNumber + '" data-episode="' + (episode.episode_number || 1) + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '" aria-label="Play episode"><i class="fa fa-play"></i></button></div></div><div class="title-detail-episode-body"><div class="title-detail-episode-header"><span class="title-detail-episode-index">E' + (episode.episode_number || '') + '</span><strong>' + escapeHtml(episode.name || 'Episode ' + (episode.episode_number || '')) + '</strong></div><div class="title-detail-episode-meta"><span>' + (airDate ? airDate.slice(0, 4) : 'New') + '</span><span>' + (episode.vote_average ? episode.vote_average.toFixed(1) : 'N/A') + '/10</span></div><p>' + escapeHtml(overview) + '</p><button type="button" class="title-detail-episode-play" data-media-type="tv" data-media-id="' + showId + '" data-season="' + seasonNumber + '" data-episode="' + (episode.episode_number || 1) + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '"><i class="fa fa-play mr-2"></i>Play</button></div></div>';
+                            return '<div class="title-detail-episode"><div class="title-detail-episode-visual"><div class="title-detail-episode-thumb-wrap">' + thumb + '<button type="button" class="title-detail-episode-play-overlay" data-media-type="tv" data-media-id="' + showId + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '" aria-label="Play episode"><i class="fa fa-play"></i></button></div></div><div class="title-detail-episode-body"><div class="title-detail-episode-header"><span class="title-detail-episode-index">E' + (episode.episode_number || '') + '</span><strong>' + escapeHtml(episode.name || 'Episode ' + (episode.episode_number || '')) + '</strong></div><div class="title-detail-episode-meta"><span>' + (airDate ? airDate.slice(0, 4) : 'New') + '</span><span>' + (episode.vote_average ? episode.vote_average.toFixed(1) : 'N/A') + '/10</span></div><p>' + escapeHtml(overview) + '</p><button type="button" class="title-detail-episode-play" data-media-type="tv" data-media-id="' + showId + '" data-title="' + encodeURIComponent(episode.name || 'Episode ' + (episode.episode_number || '')) + '"><i class="fa fa-play mr-2"></i>Play</button></div></div>';
                         }).join(''));
                     })
                     .catch(function() {
@@ -496,6 +482,7 @@ const VIDKING_CONFIG = {
                 var mediaType = jQuery(this).attr('data-media-type');
                 var mediaId = jQuery(this).attr('data-media-id');
                 var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
+                closeDetails();
                 openMediaPlayback(mediaType, mediaId, title);
             });
 
@@ -509,10 +496,9 @@ const VIDKING_CONFIG = {
             detailModal.on('click', '.title-detail-episode-play, .title-detail-episode-play-overlay', function() {
                 var mediaType = jQuery(this).attr('data-media-type');
                 var mediaId = jQuery(this).attr('data-media-id');
-                var season = jQuery(this).attr('data-season');
-                var episode = jQuery(this).attr('data-episode');
                 var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
-                openMediaPlayback(mediaType, mediaId, title, season, episode);
+                closeDetails();
+                openMediaPlayback(mediaType, mediaId, title);
             });
         }
 
@@ -690,6 +676,9 @@ const VIDKING_CONFIG = {
                 return;
             }
 
+            trendingSlider.empty();
+            trendingNav.empty();
+
             fetch(TMDB_CONFIG.baseUrl + '/trending/movie/week?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US')
                 .then(function(response) {
                     if (!response.ok) {
@@ -762,6 +751,8 @@ const VIDKING_CONFIG = {
                 return;
             }
 
+            homeSlider.html('<div class="tmdb-search-message">Loading movies...</div>');
+
             fetch(TMDB_CONFIG.baseUrl + '/movie/now_playing?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US&page=1')
                 .then(function(response) {
                     if (!response.ok) {
@@ -815,6 +806,9 @@ const VIDKING_CONFIG = {
             if (!trendingNav.length || !trendingSlider.length) {
                 return;
             }
+
+            trendingNav.empty();
+            trendingSlider.empty();
 
             fetch(TMDB_CONFIG.baseUrl + '/trending/movie/week?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US')
                 .then(function(response) {
@@ -884,11 +878,6 @@ const VIDKING_CONFIG = {
                     trendingSlider.before('<div class="tmdb-search-message">Trending movies are unavailable right now.</div>');
                 });
         }
-
-        jQuery('#home-slider, #iq-favorites .favorites-slider, #iq-upcoming-movie .favorites-slider, #top-ten-slider, #top-ten-slider-nav, #iq-suggested-movies .favorites-slider, #trending-slider-nav, #trending-slider').empty();
-        jQuery('#parallex, #iq-suggested').remove();
-        jQuery('.iq-sub-dropdown').remove();
-        jQuery('body').removeClass('tmdb-live-loading');
 
         setupVideoPlayer();
         setupSiteLinks();
