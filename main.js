@@ -214,6 +214,7 @@ const NEXTSTREAM_CONFIG = {
             if (lastPlaybackTitle && window.openTitleDetails) {
                 setTimeout(function() {
                     window.openTitleDetails(lastPlaybackTitle);
+                    lastPlaybackTitle = '';
                 }, 50);
             }
         }
@@ -456,6 +457,10 @@ const NEXTSTREAM_CONFIG = {
             function openDetails(query) {
                 detailModal.addClass('is-visible').attr('aria-hidden', 'false');
                 detailContent.html('<div class="title-detail-loading">Loading title details...</div>');
+
+                if (window.location.search.indexOf('title=') !== -1) {
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
 
                 fetch(TMDB_CONFIG.baseUrl + '/search/multi?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&query=' + encodeURIComponent(query))
                     .then(function(response) {
