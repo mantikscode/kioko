@@ -794,9 +794,11 @@ const NEXTSTREAM_CONFIG = {
                         nextArrow: '<div class="slick-nav next-arrow"><i class="fa fa-chevron-left"></i></div>',
                         responsive: [{ breakpoint: 992, settings: { dots: true, arrows: false } }]
                     }).slickAnimation();
+                    document.body.classList.remove('tmdb-live-loading');
                 })
                 .catch(function() {
                     homeSlider.before('<div class="tmdb-search-message">New movies are unavailable right now.</div>');
+                    document.body.classList.remove('tmdb-live-loading');
                 });
         }
 
