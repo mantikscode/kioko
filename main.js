@@ -5,7 +5,7 @@
 
 const NEXTSTREAM_CONFIG = {
     apiKey: 'nx_5e125687ef4051dc66ad95c6f19ffa1e',
-    baseUrl: 'https://vidsrc.to/embed'
+    baseUrl: 'https://cinesrc.st/embed'
 };
 
 (function (jQuery){
@@ -242,7 +242,14 @@ const NEXTSTREAM_CONFIG = {
             }
 
             lastPlaybackTitle = (title || '').trim();
-            var playerUrl = NEXTSTREAM_CONFIG.baseUrl + '/' + mediaType + '/' + mediaId;
+            var playerUrl = NEXTSTREAM_CONFIG.baseUrl;
+
+            if (mediaType === 'movie') {
+                playerUrl += '/movie/' + mediaId;
+            } else {
+                playerUrl += '/' + mediaType + '/' + mediaId;
+            }
+
             openPlayer(playerUrl);
         }
 
