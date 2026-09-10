@@ -22,8 +22,32 @@
   <main class="tmdb-results-main">
     <section class="tmdb-results-section is-visible">
       <div class="tmdb-results-header">
-        <h1 id="search-title">Search results</h1>
+        <h1 id="search-title">All Movies</h1>
       </div>
+
+      <div class="tmdb-filter-bar" id="results-filters" aria-label="Movie and show filters">
+        <div class="tmdb-filter-box">
+          <label for="sort-select">Sort:</label>
+          <select id="sort-select" aria-label="Sort results">
+            <option value="popularity.desc" selected>Popular</option>
+            <option value="vote_count.desc">Most Watched</option>
+            <option value="vote_average.desc">Top Rated</option>
+          </select>
+        </div>
+        <div class="tmdb-filter-box">
+          <label for="genre-select">Genre:</label>
+          <select id="genre-select" aria-label="Filter by genre">
+            <option value="">All Genres</option>
+          </select>
+        </div>
+        <div class="tmdb-filter-box">
+          <label for="year-select">Year:</label>
+          <select id="year-select" aria-label="Filter by year">
+            <option value="">All Years</option>
+          </select>
+        </div>
+      </div>
+
       <div class="tmdb-results-grid" id="results-grid" aria-live="polite">
         <div class="tmdb-search-message">Searching TMDB...</div>
       </div>
@@ -31,6 +55,6 @@
     </section>
   </main>
 
-  <script src="search-results.js?v=4"></script>
+  <script src="search-results.js?v=6"></script>
 </body>
 </html>

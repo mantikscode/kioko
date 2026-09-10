@@ -8,9 +8,70 @@ const searchParams = new URLSearchParams(window.location.search);
 const query = searchParams.get('q') || '';
 const category = searchParams.get('type') || '';
 const currentPage = Math.max(1, Number(searchParams.get('page')) || 1);
+const currentSort = searchParams.get('sort') || '';
+const currentGenre = searchParams.get('genre') || '';
+const currentYear = searchParams.get('year') || '';
 const resultsGrid = document.getElementById('results-grid');
 const searchTitle = document.getElementById('search-title');
 const pagination = document.getElementById('tmdb-pagination');
+const resultsFilters = document.getElementById('results-filters');
+const sortSelect = document.getElementById('sort-select');
+const genreSelect = document.getElementById('genre-select');
+const yearSelect = document.getElementById('year-select');
+
+const genreOptions = {
+    movie: [
+        { id: 28, name: 'Action' },
+        { id: 12, name: 'Adventure' },
+        { id: 16, name: 'Animation' },
+        { id: 35, name: 'Comedy' },
+        { id: 80, name: 'Crime' },
+        { id: 99, name: 'Documentary' },
+        { id: 18, name: 'Drama' },
+        { id: 10751, name: 'Family' },
+        { id: 14, name: 'Fantasy' },
+        { id: 36, name: 'History' },
+        { id: 27, name: 'Horror' },
+        { id: 10402, name: 'Music' },
+        { id: 9648, name: 'Mystery' },
+        { id: 10749, name: 'Romance' },
+        { id: 878, name: 'Science Fiction' },
+        { id: 53, name: 'Thriller' },
+        { id: 10752, name: 'War' },
+        { id: 37, name: 'Western' }
+    ],
+    tv: [
+        { id: 10759, name: 'Action & Adventure' },
+        { id: 16, name: 'Animation' },
+        { id: 35, name: 'Comedy' },
+        { id: 80, name: 'Crime' },
+        { id: 99, name: 'Documentary' },
+        { id: 18, name: 'Drama' },
+        { id: 10751, name: 'Family' },
+        { id: 10762, name: 'Kids' },
+        { id: 9648, name: 'Mystery' },
+        { id: 10763, name: 'News' },
+        { id: 10764, name: 'Reality' },
+        { id: 10765, name: 'Sci-Fi & Fantasy' },
+        { id: 10766, name: 'Soap' },
+        { id: 10767, name: 'Talk' },
+        { id: 10768, name: 'War & Politics' },
+        { id: 37, name: 'Western' }
+    ]
+};
+
+const sortOptionsByType = {
+    movie: [
+        { value: 'popularity.desc', label: 'Popular' },
+        { value: 'vote_count.desc', label: 'Most Watched' },
+        { value: 'vote_average.desc', label: 'Top Rated' }
+    ],
+    tv: [
+        { value: 'popularity.desc', label: 'Popular' },
+        { value: 'vote_count.desc', label: 'Most Watched' },
+        { value: 'vote_average.desc', label: 'Top Rated' }
+    ]
+};
 
 function escapeHtml(value) {
     return String(value || '').replace(/[&<>'"]/g, function(character) {
@@ -24,13 +85,39 @@ function escapeHtml(value) {
     });
 }
 
+function setFilterDefaults() {
+    if (!resultsFilters || !sortSelect || !genreSelect || !yearSelect) {
+        return;
+    }
+
+    var mediaType = category === 'tv' ? 'tv' : 'movie';
+    var sortValue = currentSort || 'popularity.desc';
+    sortSelect.innerHTML = sortOptionsByType[mediaType].map(function(option) {
+        return '<option value="' + option.value + '"' + (option.value === sortValue ? ' selected' : '') + '>' + option.label + '</option>';
+    }).join('');
+
+    var currentYearValue = Number(currentYear) || new Date().getFullYear();
+    var years = [];
+    for (var year = new Date().getFullYear(); year >= 2000; year -= 1) {
+        years.push(year);
+    }
+    yearSelect.innerHTML = '<option value="">All Years</option>' + years.map(function(year) {
+        return '<option value="' + year + '"' + (String(year) === String(currentYearValue) ? ' selected' : '') + '>' + year + '</option>';
+    }).join('');
+
+    var genres = genreOptions[mediaType] || genreOptions.movie;
+    genreSelect.innerHTML = '<option value="">All Genres</option>' + genres.map(function(genre) {
+        return '<option value="' + genre.id + '"' + (String(genre.id) === String(currentGenre) ? ' selected' : '') + '>' + escapeHtml(genre.name) + '</option>';
+    }).join('');
+}
+
 function renderResults(results) {
     var usableResults = results.filter(function(result) {
         return (result.media_type === 'movie' || result.media_type === 'tv') && (result.backdrop_path || result.poster_path);
     }).slice(0, 24);
 
     if (!usableResults.length) {
-        resultsGrid.innerHTML = '<div class="tmdb-search-message">No movies or shows found for <strong>' + escapeHtml(query) + '</strong>.</div>';
+        resultsGrid.innerHTML = '<div class="tmdb-search-message">No movies or shows found for <strong>' + escapeHtml(query || (category === 'tv' ? 'TV shows' : 'movies')) + '</strong>.</div>';
         return;
     }
 
@@ -84,11 +171,45 @@ function renderSearchResults(data, page) {
     renderPagination(data.total_pages, page);
 }
 
+function buildCategoryEndpoint(mediaType, page) {
+    var sortBy = sortSelect && sortSelect.value ? sortSelect.value : sortOptionsByType[mediaType][0].value;
+    var genreId = genreSelect && genreSelect.value ? genreSelect.value : '';
+    var yearValue = yearSelect && yearSelect.value ? yearSelect.value : '';
+    var endpoint = TMDB_CONFIG.baseUrl + '/discover/' + mediaType + '?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&sort_by=' + encodeURIComponent(sortBy) + '&page=' + page;
+
+    if (genreId) {
+        endpoint += '&with_genres=' + encodeURIComponent(genreId);
+    }
+    if (yearValue) {
+        endpoint += '&' + (mediaType === 'tv' ? 'first_air_date_year' : 'primary_release_year') + '=' + encodeURIComponent(yearValue);
+    }
+
+    return endpoint;
+}
+
+function updateCategoryUrl(page) {
+    var params = new URLSearchParams();
+    params.set('type', category);
+    params.set('page', String(page));
+
+    if (sortSelect && sortSelect.value && sortSelect.value !== sortOptionsByType[category === 'tv' ? 'tv' : 'movie'][0].value) {
+        params.set('sort', sortSelect.value);
+    }
+    if (genreSelect && genreSelect.value) {
+        params.set('genre', genreSelect.value);
+    }
+    if (yearSelect && yearSelect.value) {
+        params.set('year', yearSelect.value);
+    }
+
+    window.history.replaceState({}, '', 'search-results.html?' + params.toString());
+}
+
 function loadResults(page) {
     var endpoint;
 
     if (category === 'movie' || category === 'tv') {
-        endpoint = TMDB_CONFIG.baseUrl + '/discover/' + category + '?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&sort_by=popularity.desc&page=' + page;
+        endpoint = buildCategoryEndpoint(category, page);
     } else {
         endpoint = TMDB_CONFIG.baseUrl + '/search/multi?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&query=' + encodeURIComponent(query) + '&page=' + page;
     }
@@ -105,10 +226,11 @@ function loadResults(page) {
         .then(function(data) {
             if (category === 'movie' || category === 'tv') {
                 renderCategoryResults(data, category, page);
+                updateCategoryUrl(page);
             } else {
                 renderSearchResults(data, page);
+                window.history.replaceState({}, '', 'search-results.html?' + (category ? 'type=' + encodeURIComponent(category) : 'q=' + encodeURIComponent(query)) + '&page=' + page);
             }
-            window.history.replaceState({}, '', 'search-results.html?' + (category ? 'type=' + encodeURIComponent(category) : 'q=' + encodeURIComponent(query)) + '&page=' + page);
         })
         .catch(function() {
             resultsGrid.innerHTML = '<div class="tmdb-search-message">TMDB is unavailable right now. Please try again.</div>';
@@ -124,14 +246,32 @@ pagination.addEventListener('click', function(event) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
+if (resultsFilters && sortSelect && genreSelect && yearSelect) {
+    sortSelect.addEventListener('change', function() { loadResults(1); });
+    genreSelect.addEventListener('change', function() { loadResults(1); });
+    yearSelect.addEventListener('change', function() { loadResults(1); });
+}
+
 if (category === 'movie' || category === 'tv') {
-    var categoryName = category === 'movie' ? 'Movies' : 'TV Shows';
-    searchTitle.textContent = categoryName;
+    var categoryName = category === 'movie' ? 'All Movies' : 'All TV Shows';
+    if (searchTitle) {
+        searchTitle.textContent = categoryName;
+    }
+    if (resultsFilters) {
+        resultsFilters.style.display = 'grid';
+    }
+    setFilterDefaults();
     loadResults(currentPage);
 } else if (!query) {
+    if (resultsFilters) {
+        resultsFilters.style.display = 'none';
+    }
     searchTitle.textContent = 'Search movies and shows';
     resultsGrid.innerHTML = '<div class="tmdb-search-message">Enter a title from the home page to start searching.</div>';
 } else {
+    if (resultsFilters) {
+        resultsFilters.style.display = 'none';
+    }
     searchTitle.textContent = 'Results for "' + query + '"';
     loadResults(currentPage);
 }

@@ -354,12 +354,22 @@ const NEXTSTREAM_CONFIG = {
         function setupSiteLinks() {
             jQuery('#top-menu a').each(function() {
                 var label = jQuery(this).text().trim().toLowerCase();
+                var href = jQuery(this).attr('href');
+
                 if (label === 'home') {
                     jQuery(this).attr('href', '#home');
-                } else if (label === 'movies') {
-                    jQuery(this).attr('href', 'search-results.html?type=movie');
-                } else if (label === 'shows') {
-                    jQuery(this).attr('href', 'search-results.html?type=tv');
+                } else if (label === 'movies' || label === 'movie') {
+                    href = 'search-results.html?type=movie&page=1';
+                    jQuery(this).attr('href', href).off('click.categoryReload').on('click.categoryReload', function(event) {
+                        event.preventDefault();
+                        window.location.assign(href);
+                    });
+                } else if (label === 'shows' || label === 'tv shows' || label === 'tv' || label === 'series') {
+                    href = 'search-results.html?type=tv&page=1';
+                    jQuery(this).attr('href', href).off('click.categoryReload').on('click.categoryReload', function(event) {
+                        event.preventDefault();
+                        window.location.assign(href);
+                    });
                 }
             });
 
