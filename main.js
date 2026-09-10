@@ -208,14 +208,18 @@ const NEXTSTREAM_CONFIG = {
                 return;
             }
 
+            var detailIsOpen = jQuery('.title-detail-modal.is-visible').length > 0;
             globalPlayerFrame.attr('src', 'about:blank');
             globalPlayerModal.removeClass('is-visible').attr('aria-hidden', 'true');
+            jQuery('.title-detail-modal').removeClass('is-playing');
 
-            if (lastPlaybackTitle && window.openTitleDetails) {
+            if (lastPlaybackTitle && window.openTitleDetails && !detailIsOpen) {
                 setTimeout(function() {
                     window.openTitleDetails(lastPlaybackTitle);
                     lastPlaybackTitle = '';
                 }, 50);
+            } else {
+                lastPlaybackTitle = '';
             }
         }
 
@@ -230,7 +234,6 @@ const NEXTSTREAM_CONFIG = {
                 return;
             }
 
-            jQuery('.title-detail-modal').removeClass('is-visible').attr('aria-hidden', 'true');
             globalPlayerModal.css('z-index', '1003');
             globalPlayerFrame.attr('src', sourceUrl);
             globalPlayerModal.addClass('is-visible').attr('aria-hidden', 'false');
@@ -246,10 +249,10 @@ const NEXTSTREAM_CONFIG = {
             var playerUrl = NEXTSTREAM_CONFIG.baseUrl;
 
             if (mediaType === 'movie') {
-                playerUrl += '/movie/' + mediaId + '?autonext=true';
+                playerUrl += '/movie/' + mediaId + '?autonext=true&autoplay=true';
             } else {
                 playerUrl += '/tv/' + mediaId;
-                var tvParams = ['autonext=true'];
+                var tvParams = ['autonext=true', 'autoplay=true'];
                 if (season) {
                     tvParams.push('s=' + encodeURIComponent(season));
                 }
@@ -357,7 +360,7 @@ const NEXTSTREAM_CONFIG = {
                 var href = jQuery(this).attr('href');
 
                 if (label === 'home') {
-                    jQuery(this).attr('href', '#home');
+                    jQuery(this).attr('href', 'index.html#home');
                 } else if (label === 'movies' || label === 'movie') {
                     href = 'search-results.html?type=movie&page=1';
                     jQuery(this).attr('href', href).off('click.categoryReload').on('click.categoryReload', function(event) {
@@ -396,7 +399,8 @@ const NEXTSTREAM_CONFIG = {
 
             function closeDetails() {
                 detailModal.find('.title-detail-trailer').attr('src', 'about:blank');
-                detailModal.removeClass('is-visible').attr('aria-hidden', 'true');
+                detailModal.removeClass('is-visible is-playing').attr('aria-hidden', 'true');
+                window.history.replaceState({}, '', window.location.pathname);
             }
 
             function trailerFor(videos) {
@@ -456,7 +460,7 @@ const NEXTSTREAM_CONFIG = {
                 var seasonMarkup = isSeries ? '<div class="title-detail-series-panel"><div class="title-detail-series-header"><h2>Seasons & Episodes</h2></div><div class="title-detail-season-picker"><label for="title-detail-season-select">Season</label><select id="title-detail-season-select" class="title-detail-season-select" data-show-id="' + result.id + '">' + seasons.map(function(season) { return '<option value="' + season.season_number + '">Season ' + season.season_number + '</option>'; }).join('') + '</select></div><div class="title-detail-episodes" data-show-id="' + result.id + '" data-season="' + defaultSeason + '"></div></div>' : '';
 
                 detailModal.find('.title-detail-dialog').css('background-image', backdropUrl ? 'url("' + backdropUrl + '")' : 'none');
-                detailContent.html('<div class="title-detail-scrim"></div><div class="title-detail-body"><div class="title-detail-poster">' + (posterUrl ? '<img src="' + posterUrl + '" alt="' + escapeHtml(title) + ' poster">' : '') + '</div><div class="title-detail-copy"><span class="title-detail-brand">KIOKO</span><h1 id="title-detail-heading">' + escapeHtml(title) + '</h1><div class="title-detail-meta"><span>' + type + '</span><span>' + (date ? date.slice(0, 4) : 'New') + '</span><span>' + (result.vote_average ? result.vote_average.toFixed(1) : 'N/A') + '/10</span><span>' + escapeHtml(genres || 'Drama, Entertainment') + '</span></div><p>' + escapeHtml(details.overview || result.overview || 'Discover more about this title.') + '</p><div class="title-detail-actions"><button type="button" class="btn btn-hover title-detail-play" data-media-type="' + (isSeries ? 'tv' : 'movie') + '" data-media-id="' + result.id + '" data-title="' + encodeURIComponent(title) + '"><i class="fa fa-play mr-2"></i>Play</button><button type="button" class="title-detail-trailer-toggle"><i class="fa fa-play mr-2"></i>' + (trailer ? 'Trailer playing' : 'Trailer unavailable') + '</button></div></div></div><div class="title-detail-video">' + trailerMarkup + '</div>' + seasonMarkup + '');
+                detailContent.html('<div class="title-detail-topbar"><a class="title-detail-topbar-brand" href="index.html">KIOKO</a><nav><a href="index.html#home">Home</a><a href="search-results.html?type=movie&page=1">Movies</a><a href="search-results.html?type=tv&page=1">TV Shows</a></nav></div><div class="title-detail-scrim"></div><div class="title-detail-body"><div class="title-detail-poster">' + (posterUrl ? '<img src="' + posterUrl + '" alt="' + escapeHtml(title) + ' poster">' : '') + '</div><div class="title-detail-copy"><h1 id="title-detail-heading">' + escapeHtml(title) + '</h1><div class="title-detail-meta"><span>' + type + '</span><span>' + (date ? date.slice(0, 4) : 'New') + '</span><span>' + (result.vote_average ? result.vote_average.toFixed(1) : 'N/A') + '/10</span><span>' + escapeHtml(genres || 'Drama, Entertainment') + '</span></div><p>' + escapeHtml(details.overview || result.overview || 'Discover more about this title.') + '</p><div class="title-detail-actions"><button type="button" class="btn btn-hover title-detail-play" data-media-type="' + (isSeries ? 'tv' : 'movie') + '" data-media-id="' + result.id + '" data-title="' + encodeURIComponent(title) + '"><i class="fa fa-play mr-2"></i>Play</button><button type="button" class="title-detail-trailer-toggle"><i class="fa fa-video-camera mr-2"></i>' + (trailer ? 'Trailer' : 'Trailer unavailable') + '</button></div></div></div><div class="title-detail-video">' + trailerMarkup + '</div>' + seasonMarkup + '');
 
                 if (isSeries && seasons.length) {
                     var episodesContainer = detailModal.find('.title-detail-episodes');
@@ -468,9 +472,7 @@ const NEXTSTREAM_CONFIG = {
                 detailModal.addClass('is-visible').attr('aria-hidden', 'false');
                 detailContent.html('<div class="title-detail-loading">Loading title details...</div>');
 
-                if (window.location.search.indexOf('title=') !== -1) {
-                    window.history.replaceState({}, '', window.location.pathname);
-                }
+                window.history.replaceState({}, '', window.location.pathname + '?title=' + encodeURIComponent(query));
 
                 fetch(TMDB_CONFIG.baseUrl + '/search/multi?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&query=' + encodeURIComponent(query))
                     .then(function(response) {
@@ -514,7 +516,7 @@ const NEXTSTREAM_CONFIG = {
                 var mediaType = jQuery(this).attr('data-media-type');
                 var mediaId = jQuery(this).attr('data-media-id');
                 var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
-                closeDetails();
+                detailModal.addClass('is-playing');
                 openMediaPlayback(mediaType, mediaId, title);
             });
 
@@ -531,7 +533,7 @@ const NEXTSTREAM_CONFIG = {
                 var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
                 var season = jQuery(this).attr('data-season');
                 var episode = jQuery(this).attr('data-episode');
-                closeDetails();
+                detailModal.addClass('is-playing');
                 openMediaPlayback(mediaType, mediaId, title, season, episode);
             });
         }

@@ -1,4 +1,4 @@
-const TMDB_CONFIG = {
+const RESULTS_TMDB_CONFIG = {
     apiKey: '64672e64858d59449d385e4df7e296d1',
     baseUrl: 'https://api.themoviedb.org/3'
 };
@@ -96,7 +96,7 @@ function setFilterDefaults() {
         return '<option value="' + option.value + '"' + (option.value === sortValue ? ' selected' : '') + '>' + option.label + '</option>';
     }).join('');
 
-    var currentYearValue = Number(currentYear) || new Date().getFullYear();
+    var currentYearValue = Number(currentYear) || 0;
     var years = [];
     for (var year = new Date().getFullYear(); year >= 2000; year -= 1) {
         years.push(year);
@@ -157,7 +157,10 @@ function renderPagination(totalPages, page) {
 
 function renderCategoryResults(data, mediaType, page) {
     var results = (data.results || []).filter(function(result) {
-        return result.backdrop_path || result.poster_path;
+        var hasMovieFields = result.title && result.release_date && !result.name && !result.first_air_date;
+        var hasTvFields = result.name && result.first_air_date && !result.title && !result.release_date;
+        var hasExpectedMediaType = mediaType === 'movie' ? hasMovieFields : hasTvFields;
+        return hasExpectedMediaType && (result.backdrop_path || result.poster_path);
     }).map(function(result) {
         result.media_type = mediaType;
         return result;
@@ -175,7 +178,12 @@ function buildCategoryEndpoint(mediaType, page) {
     var sortBy = sortSelect && sortSelect.value ? sortSelect.value : sortOptionsByType[mediaType][0].value;
     var genreId = genreSelect && genreSelect.value ? genreSelect.value : '';
     var yearValue = yearSelect && yearSelect.value ? yearSelect.value : '';
-    var endpoint = TMDB_CONFIG.baseUrl + '/discover/' + mediaType + '?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&sort_by=' + encodeURIComponent(sortBy) + '&page=' + page;
+    var endpoint = RESULTS_TMDB_CONFIG.baseUrl + '/discover/' + mediaType + '?api_key=' + encodeURIComponent(RESULTS_TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&sort_by=' + encodeURIComponent(sortBy) + '&page=' + page;
+
+    if (sortBy === 'vote_average.desc') {
+        var releaseDateField = mediaType === 'tv' ? 'first_air_date.lte' : 'primary_release_date.lte';
+        endpoint += '&' + releaseDateField + '=' + new Date().toISOString().slice(0, 10);
+    }
 
     if (genreId) {
         endpoint += '&with_genres=' + encodeURIComponent(genreId);
@@ -211,7 +219,7 @@ function loadResults(page) {
     if (category === 'movie' || category === 'tv') {
         endpoint = buildCategoryEndpoint(category, page);
     } else {
-        endpoint = TMDB_CONFIG.baseUrl + '/search/multi?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&query=' + encodeURIComponent(query) + '&page=' + page;
+        endpoint = RESULTS_TMDB_CONFIG.baseUrl + '/search/multi?api_key=' + encodeURIComponent(RESULTS_TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&query=' + encodeURIComponent(query) + '&page=' + page;
     }
 
     resultsGrid.innerHTML = '<div class="tmdb-search-message">Loading page ' + page + '...</div>';
@@ -253,7 +261,8 @@ if (resultsFilters && sortSelect && genreSelect && yearSelect) {
 }
 
 if (category === 'movie' || category === 'tv') {
-    var categoryName = category === 'movie' ? 'All Movies' : 'All TV Shows';
+    var categoryName = category === 'movie' ? 'Movies' : 'Shows';
+    document.title = categoryName + ' | Kioko';
     if (searchTitle) {
         searchTitle.textContent = categoryName;
     }
