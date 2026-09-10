@@ -6,6 +6,7 @@
   <title>Search Results | Kioko</title>
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
   <link rel="apple-touch-icon" href="images/favicon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -22,6 +23,27 @@
   <link rel="stylesheet" href="style.css?v=38" />
 </head>
 <body class="tmdb-results-page">
+  <script>
+    (function () {
+      function deferImages(root) {
+        root.querySelectorAll('img:not([loading]):not(header img)').forEach(function (image) {
+          image.loading = 'lazy';
+          image.decoding = 'async';
+        });
+      }
+
+      deferImages(document);
+      new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+          mutation.addedNodes.forEach(function (node) {
+            if (node.nodeType === 1) {
+              deferImages(node);
+            }
+          });
+        });
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    }());
+  </script>
   <header id="main-header">
     <div class="main-header">
       <div class="container-fluid">

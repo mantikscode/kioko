@@ -1,0 +1,19 @@
+{
+  "name": "Kioko",
+  "short_name": "Kioko",
+  "description": "Discover movies and TV shows with Kioko.",
+  "start_url": "./index.html#home",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#07090d",
+  "theme_color": "#07090d",
+  "icons": [
+    {
+      "src": "images/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

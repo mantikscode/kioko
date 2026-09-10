@@ -11,6 +11,10 @@ const NEXTSTREAM_CONFIG = {
 (function (jQuery){
     "use strict";
     jQuery(document).ready(function(){
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(function() {});
+        }
+
         const tmdbImageBaseUrl = 'https://image.tmdb.org/t/p/w342';
 
         function escapeHtml(value) {
@@ -1002,6 +1006,7 @@ const NEXTSTREAM_CONFIG = {
         });
 
 
+        if (false) {
         $('#home-slider').slick({
             autoplay : false,
             speed : 800,
@@ -1119,6 +1124,8 @@ const NEXTSTREAM_CONFIG = {
                 }
             ]
         });
+
+        }
 
         jQuery('.episodes-slider1').owlCarousel({
             loop : true,
