@@ -3,9 +3,17 @@
     baseUrl: 'https://api.themoviedb.org/3'
 };
 
-const NEXTSTREAM_CONFIG = {
-    apiKey: 'nx_5e125687ef4051dc66ad95c6f19ffa1e',
+const VIDKING_CONFIG = {
+    baseUrl: 'https://www.vidking.net/embed',
+    color: 'e50914'
+};
+
+const CINESRC_CONFIG = {
     baseUrl: 'https://cinesrc.st/embed'
+};
+
+const TVMAZE_CONFIG = {
+    baseUrl: 'https://api.tvmaze.com'
 };
 
 (function (jQuery){
@@ -36,6 +44,97 @@ const NEXTSTREAM_CONFIG = {
         function resultYear(result) {
             var date = result.release_date || result.first_air_date || '';
             return date ? date.slice(0, 4) : 'Unknown year';
+        }
+
+        function stripHtml(value) {
+            return String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        }
+
+        function mapTvMazeShowToTmdbShape(show) {
+            if (!show) {
+                return null;
+            }
+
+            var embedded = show._embedded || {};
+            var seasons = Array.isArray(embedded.seasons) ? embedded.seasons.map(function(season) {
+                return {
+                    season_number: season.number,
+                    name: season.name
+                };
+            }) : [];
+
+            return {
+                media_type: 'tv',
+                id: show.id,
+                title: show.name,
+                name: show.name,
+                poster_path: show.image && show.image.original ? show.image.original : '',
+                backdrop_path: show.image && show.image.original ? show.image.original : '',
+                overview: stripHtml(show.summary || ''),
+                first_air_date: show.premiered || '',
+                vote_average: show.rating && show.rating.average ? Number(show.rating.average) : 0,
+                number_of_seasons: show.ended ? Math.max((show._embedded && show._embedded.seasons ? show._embedded.seasons.length : 0), 1) : (show._embedded && show._embedded.seasons ? show._embedded.seasons.length : 1),
+                genres: Array.isArray(show.genres) ? show.genres.map(function(genre) { return { name: genre }; }) : [],
+                seasons: seasons,
+                release_date: show.premiered || '',
+                results: Array.isArray(embedded.episodes) ? embedded.episodes : []
+            };
+        }
+
+        function fetchTvMazeShow(query) {
+            if (!query) {
+                return Promise.resolve(null);
+            }
+
+            return fetch(TVMAZE_CONFIG.baseUrl + '/search/shows?q=' + encodeURIComponent(query))
+                .then(function(response) {
+                    if (!response.ok) {
+                        return null;
+                    }
+                    return response.json();
+                })
+                .then(function(results) {
+                    var entry = (results || []).find(function(item) { return item && item.show; });
+                    if (!entry || !entry.show) {
+                        return null;
+                    }
+                    return entry.show;
+                })
+                .catch(function() {
+                    return null;
+                });
+        }
+
+        function fetchTvMazeCast(query) {
+            if (!query) {
+                return Promise.resolve([]);
+            }
+
+            return fetchTvMazeShow(query)
+                .then(function(show) {
+                    if (!show || !show.id) {
+                        return [];
+                    }
+
+                    return fetch(TVMAZE_CONFIG.baseUrl + '/shows/' + show.id + '?embed[]=cast&embed[]=seasons')
+                        .then(function(response) {
+                            if (!response.ok) {
+                                return [];
+                            }
+                            return response.json();
+                        })
+                        .then(function(showDetails) {
+                            var cast = (showDetails && showDetails._embedded && showDetails._embedded.cast) || [];
+                            return cast.slice(0, 6).map(function(actor) {
+                                return {
+                                    name: actor && actor.person ? actor.person.name : 'Unknown actor'
+                                };
+                            });
+                        });
+                })
+                .catch(function() {
+                    return [];
+                });
         }
 
         function renderSearchResults(resultsContainer, results, query) {
@@ -206,16 +305,26 @@ const NEXTSTREAM_CONFIG = {
         var globalPlayerModal = null;
         var globalPlayerFrame = null;
         var lastPlaybackTitle = '';
+        var currentPlayback = null;
 
         function closePlayer() {
             if (!globalPlayerFrame || !globalPlayerModal) {
                 return;
             }
 
+            try {
+                if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+                    document.exitFullscreen();
+                }
+            } catch (error) {
+                // ignore fullscreen exit errors
+            }
+
             var detailIsOpen = jQuery('.title-detail-modal.is-visible').length > 0;
             globalPlayerFrame.attr('src', 'about:blank');
             globalPlayerModal.removeClass('is-visible').attr('aria-hidden', 'true');
             jQuery('.title-detail-modal').removeClass('is-playing');
+            currentPlayback = null;
 
             if (lastPlaybackTitle && window.openTitleDetails && !detailIsOpen) {
                 setTimeout(function() {
@@ -238,42 +347,99 @@ const NEXTSTREAM_CONFIG = {
                 return;
             }
 
+            var isMobile = window.matchMedia && window.matchMedia('(max-width: 767px)').matches || window.innerWidth <= 767 || /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent);
             globalPlayerModal.css('z-index', '1003');
+            globalPlayerModal.toggleClass('is-mobile-fullscreen', isMobile);
             globalPlayerFrame.attr('src', sourceUrl);
             globalPlayerModal.addClass('is-visible').attr('aria-hidden', 'false');
+
+            if (isMobile) {
+                try {
+                    if (globalPlayerModal[0] && typeof globalPlayerModal[0].requestFullscreen === 'function') {
+                        globalPlayerModal[0].requestFullscreen();
+                    } else if (document.documentElement && typeof document.documentElement.requestFullscreen === 'function') {
+                        document.documentElement.requestFullscreen();
+                    }
+                } catch (error) {
+                    // ignore fullscreen request failures and keep the full-screen overlay fallback
+                }
+            }
+
+            window.setTimeout(function() {
+                var modalTop = globalPlayerModal.offset().top || 0;
+                var currentScroll = jQuery(window).scrollTop() || 0;
+                if (modalTop > currentScroll + 80) {
+                    jQuery('html, body').stop(true, true).animate({ scrollTop: modalTop - 40 }, 300);
+                }
+            }, 80);
         }
 
-        function openMediaPlayback(mediaType, mediaId, title, season, episode) {
+        function buildPlayerUrl(provider, playback) {
+            var playerUrl;
+
+            if (provider === 'cinesrc') {
+                playerUrl = CINESRC_CONFIG.baseUrl + '/' + playback.mediaType + '/' + playback.mediaId;
+                var cinesrcParams = ['autonext=true', 'autoplay=true', 'quality=720'];
+                if (playback.mediaType === 'tv') {
+                    if (playback.season) {
+                        cinesrcParams.push('s=' + encodeURIComponent(playback.season));
+                    }
+                    if (playback.episode) {
+                        cinesrcParams.push('e=' + encodeURIComponent(playback.episode));
+                    }
+                }
+                return playerUrl + '?' + cinesrcParams.join('&');
+            }
+
+            playerUrl = VIDKING_CONFIG.baseUrl + '/' + playback.mediaType + '/' + playback.mediaId;
+            var vidkingParams = new URLSearchParams({
+                color: VIDKING_CONFIG.color,
+                autoPlay: 'true'
+            });
+            if (playback.mediaType === 'tv') {
+                playerUrl += '/' + (playback.season || 1) + '/' + (playback.episode || 1);
+                vidkingParams.set('nextEpisode', 'true');
+                vidkingParams.set('episodeSelector', 'true');
+            }
+            return playerUrl + '?' + vidkingParams.toString();
+        }
+
+        function openMediaPlayback(mediaType, mediaId, title, season, episode, provider) {
             if (!mediaType || !mediaId) {
                 window.alert('This title cannot be played right now.');
                 return;
             }
 
             lastPlaybackTitle = (title || '').trim();
-            var playerUrl = NEXTSTREAM_CONFIG.baseUrl;
-
-            if (mediaType === 'movie') {
-                playerUrl += '/movie/' + mediaId + '?autonext=true&autoplay=true';
-            } else {
-                playerUrl += '/tv/' + mediaId;
-                var tvParams = ['autonext=true', 'autoplay=true'];
-                if (season) {
-                    tvParams.push('s=' + encodeURIComponent(season));
-                }
-                if (episode) {
-                    tvParams.push('e=' + encodeURIComponent(episode));
-                }
-                playerUrl += '?' + tvParams.join('&');
-            }
-
-            openPlayer(playerUrl);
+            currentPlayback = {
+                mediaType: mediaType,
+                mediaId: mediaId,
+                season: season,
+                episode: episode,
+                provider: provider || 'cinesrc'
+            };
+            jQuery('.video-provider-button').removeClass('is-active');
+            jQuery('.video-provider-button[data-provider="' + currentPlayback.provider + '"]').addClass('is-active');
+            jQuery('.title-detail-trailer').attr('src', 'about:blank');
+            openPlayer(buildPlayerUrl(currentPlayback.provider, currentPlayback));
         }
 
         function setupVideoPlayer() {
-            var playerModal = jQuery('<div class="video-player-modal" aria-hidden="true"><div class="video-player-dialog" role="dialog" aria-modal="true"><button type="button" class="video-player-close" aria-label="Close video">&times;</button><iframe class="video-player" title="Movie trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div></div>');
+            var playerModal = jQuery('<div class="video-player-modal" aria-hidden="true"><div class="video-player-dialog" role="dialog" aria-modal="true"><button type="button" class="video-player-close" aria-label="Close video">&times;</button><iframe class="video-player" title="Video player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div></div>');
             globalPlayerModal = playerModal;
             globalPlayerFrame = playerModal.find('.video-player');
             jQuery('body').append(playerModal);
+
+            playerModal.on('click', '.video-provider-button', function() {
+                var provider = jQuery(this).attr('data-provider');
+                if (!currentPlayback || currentPlayback.provider === provider) {
+                    return;
+                }
+                currentPlayback.provider = provider;
+                playerModal.find('.video-provider-button').removeClass('is-active');
+                jQuery(this).addClass('is-active');
+                openPlayer(buildPlayerUrl(provider, currentPlayback));
+            });
 
             function findTrailer(videos) {
                 return (videos || []).filter(function(video) {
@@ -402,17 +568,8 @@ const NEXTSTREAM_CONFIG = {
             jQuery('body').append(detailModal);
 
             function closeDetails() {
-                detailModal.find('.title-detail-trailer').attr('src', 'about:blank');
                 detailModal.removeClass('is-visible is-playing').attr('aria-hidden', 'true');
                 window.history.replaceState({}, '', window.location.pathname);
-            }
-
-            function trailerFor(videos) {
-                return (videos || []).filter(function(video) {
-                    return video.site === 'YouTube' && video.key && (video.type === 'Trailer' || video.type === 'Teaser');
-                }).sort(function(first, second) {
-                    return Number(second.official) - Number(first.official);
-                })[0];
             }
 
             function renderSeasonEpisodes(showId, seasonNumber, episodesContainer) {
@@ -448,23 +605,27 @@ const NEXTSTREAM_CONFIG = {
                     });
             }
 
-            function renderDetails(result, details, videos) {
+            function renderDetails(result, details, videos, credits) {
                 var title = result.title || result.name || 'Untitled';
                 var date = result.release_date || result.first_air_date || '';
                 var type = result.media_type === 'tv' ? 'TV show' : 'Movie';
-                var trailer = trailerFor(videos);
                 var isSeries = result.media_type === 'tv' || !!details.number_of_seasons;
                 var backdrop = details.backdrop_path || result.backdrop_path;
                 var backdropUrl = backdrop ? 'https://image.tmdb.org/t/p/original' + backdrop : '';
                 var posterUrl = result.poster_path ? 'https://image.tmdb.org/t/p/w500' + result.poster_path : '';
                 var genres = (details.genres || []).slice(0, 3).map(function(genre) { return genre.name; }).join(', ');
-                var trailerMarkup = trailer ? '<iframe class="title-detail-trailer" title="' + escapeHtml(title) + ' trailer" src="https://www.youtube.com/embed/' + encodeURIComponent(trailer.key) + '?autoplay=1&mute=1&rel=0&controls=0&loop=1&playlist=' + encodeURIComponent(trailer.key) + '" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>' : '<div class="title-detail-no-trailer">No YouTube trailer is available for this title yet.</div>';
                 var seasons = (details.seasons || []).filter(function(season) { return season.season_number && season.season_number > 0; });
                 var defaultSeason = seasons.length ? seasons[0].season_number : 1;
                 var seasonMarkup = isSeries ? '<div class="title-detail-series-panel"><div class="title-detail-series-header"><h2>Seasons & Episodes</h2></div><div class="title-detail-season-picker"><label for="title-detail-season-select">Season</label><select id="title-detail-season-select" class="title-detail-season-select" data-show-id="' + result.id + '">' + seasons.map(function(season) { return '<option value="' + season.season_number + '">Season ' + season.season_number + '</option>'; }).join('') + '</select></div><div class="title-detail-episodes" data-show-id="' + result.id + '" data-season="' + defaultSeason + '"></div></div>' : '';
+                var castList = ((credits || []).length) ? (credits || []).slice(0, 6).map(function(actor) {
+                    return '<span class="title-detail-cast-actor">' + escapeHtml(actor.name || 'Unknown actor') + '</span>';
+                }).join('') : '';
+                var castMarkup = castList ? '<div class="title-detail-cast"><div class="title-detail-cast-label">Cast</div><div class="title-detail-cast-list">' + castList + '</div></div>' : '';
+                var mediaTypeKey = isSeries ? 'tv' : 'movie';
+                var trailerButton = '<button type="button" class="title-detail-trailer-toggle" data-media-type="' + mediaTypeKey + '" data-media-id="' + result.id + '" data-title="' + encodeURIComponent(title) + '"><i class="fa fa-play-circle mr-2"></i>Trailer</button>';
 
-                detailModal.find('.title-detail-dialog').css('background-image', backdropUrl ? 'url("' + backdropUrl + '")' : 'none');
-                detailContent.html('<div class="title-detail-topbar"><a class="title-detail-topbar-brand" href="index.html">KIOKO</a><nav><a href="index.html#home">Home</a><a href="search-results.html?type=movie&page=1">Movies</a><a href="search-results.html?type=tv&page=1">TV Shows</a></nav></div><div class="title-detail-scrim"></div><div class="title-detail-body"><div class="title-detail-poster">' + (posterUrl ? '<img src="' + posterUrl + '" alt="' + escapeHtml(title) + ' poster">' : '') + '</div><div class="title-detail-copy"><h1 id="title-detail-heading">' + escapeHtml(title) + '</h1><div class="title-detail-meta"><span>' + type + '</span><span>' + (date ? date.slice(0, 4) : 'New') + '</span><span>' + (result.vote_average ? result.vote_average.toFixed(1) : 'N/A') + '/10</span><span>' + escapeHtml(genres || 'Drama, Entertainment') + '</span></div><p>' + escapeHtml(details.overview || result.overview || 'Discover more about this title.') + '</p><div class="title-detail-actions"><button type="button" class="btn btn-hover title-detail-play" data-media-type="' + (isSeries ? 'tv' : 'movie') + '" data-media-id="' + result.id + '" data-title="' + encodeURIComponent(title) + '"><i class="fa fa-play mr-2"></i>Play</button><button type="button" class="title-detail-trailer-toggle"><i class="fa fa-video-camera mr-2"></i>' + (trailer ? 'Trailer' : 'Trailer unavailable') + '</button></div></div></div><div class="title-detail-video">' + trailerMarkup + '</div>' + seasonMarkup + '');
+                detailModal.find('.title-detail-dialog').css('background-image', backdropUrl ? 'url("' + backdropUrl + '")' : 'none').css('--title-detail-backdrop', backdropUrl ? 'url("' + backdropUrl + '")' : 'none');
+                detailContent.html('<div class="title-detail-topbar"><a class="title-detail-topbar-brand" href="index.html">KIOKO</a><nav><a href="index.html#home">Home</a><a href="search-results.html?type=movie&page=1">Movies</a><a href="search-results.html?type=tv&page=1">TV Shows</a></nav></div><div class="title-detail-scrim"></div><div class="title-detail-body"><div class="title-detail-poster">' + (posterUrl ? '<img src="' + posterUrl + '" alt="' + escapeHtml(title) + ' poster">' : '') + '</div><div class="title-detail-copy"><h1 id="title-detail-heading">' + escapeHtml(title) + '</h1><div class="title-detail-meta"><span>' + type + '</span><span>' + (date ? date.slice(0, 4) : 'New') + '</span><span>' + (result.vote_average ? result.vote_average.toFixed(1) : 'N/A') + '/10</span><span>' + escapeHtml(genres || 'Drama, Entertainment') + '</span></div><p>' + escapeHtml(details.overview || result.overview || 'Discover more about this title.') + '</p><div class="title-detail-actions"><button type="button" class="btn btn-hover title-detail-play" data-media-type="' + mediaTypeKey + '" data-media-id="' + result.id + '" data-title="' + encodeURIComponent(title) + '"><i class="fa fa-play mr-2"></i>Play</button>' + trailerButton + '</div>' + castMarkup + '</div></div>' + seasonMarkup + '');
 
                 if (isSeries && seasons.length) {
                     var episodesContainer = detailModal.find('.title-detail-episodes');
@@ -478,6 +639,10 @@ const NEXTSTREAM_CONFIG = {
 
                 window.history.replaceState({}, '', window.location.pathname + '?title=' + encodeURIComponent(query));
 
+                if (query && query.toLowerCase().indexOf('tv') !== -1) {
+                    // use TV Maze for TV show details when the title is clearly a series title
+                }
+
                 fetch(TMDB_CONFIG.baseUrl + '/search/multi?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US&include_adult=false&query=' + encodeURIComponent(query))
                     .then(function(response) {
                         if (!response.ok) { throw new Error('TMDB request failed'); }
@@ -489,13 +654,83 @@ const NEXTSTREAM_CONFIG = {
                         var result = (data.results || []).filter(function(item) {
                             return (item.media_type === 'movie' || item.media_type === 'tv');
                         })[0];
-                        if (!result) { throw new Error('Title not found'); }
+                        if (!result) {
+                            return fetchTvMazeShow(query).then(function(tvMazeShow) {
+                                if (!tvMazeShow) { throw new Error('Title not found'); }
+                                return fetch(TVMAZE_CONFIG.baseUrl + '/shows/' + tvMazeShow.id + '?embed[]=cast&embed[]=seasons').then(function(response) {
+                                    if (!response.ok) { throw new Error('TV Maze request failed'); }
+                                    return response.json();
+                                }).then(function(showDetails) {
+                                    var mappedResult = mapTvMazeShowToTmdbShape(showDetails);
+                                    var credits = (showDetails && showDetails._embedded && showDetails._embedded.cast) ? showDetails._embedded.cast.slice(0, 6).map(function(actor) {
+                                        return { name: actor && actor.person ? actor.person.name : 'Unknown actor' };
+                                    }) : [];
+                                    renderDetails(mappedResult, mappedResult, [], credits);
+                                });
+                            });
+                        }
+
                         var mediaType = result.media_type;
-                        return Promise.all([
+                        var detailRequests = [
                             fetch(TMDB_CONFIG.baseUrl + '/' + mediaType + '/' + result.id + '?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US').then(function(response) { return response.json(); }),
                             fetch(TMDB_CONFIG.baseUrl + '/' + mediaType + '/' + result.id + '/videos?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US').then(function(response) { return response.json(); })
-                        ]).then(function(data) {
-                            renderDetails(result, data[0], data[1].results);
+                        ];
+
+                        if (mediaType === 'movie' || mediaType === 'tv') {
+                            detailRequests.push(
+                                fetch(TMDB_CONFIG.baseUrl + '/' + mediaType + '/' + result.id + '/credits?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US').then(function(response) { return response.json(); })
+                            );
+                        }
+
+                        if (mediaType === 'tv') {
+                            return Promise.all(detailRequests).then(function(data) {
+                                var tmdbDetails = data[0] || {};
+                                var tmdbCredits = (data[2] && data[2].cast) ? data[2].cast : [];
+                                var credits = tmdbCredits.slice(0, 6);
+                                var shouldUseTvMazeFallback = !(tmdbDetails.seasons && tmdbDetails.seasons.length) || credits.length === 0;
+
+                                if (!shouldUseTvMazeFallback) {
+                                    renderDetails(result, tmdbDetails, data[1].results, credits);
+                                    return;
+                                }
+
+                                return fetchTvMazeShow(result.name || result.title).then(function(show) {
+                                    if (!show || !show.id) {
+                                        renderDetails(result, tmdbDetails, data[1].results, credits);
+                                        return;
+                                    }
+
+                                    return fetch(TVMAZE_CONFIG.baseUrl + '/shows/' + show.id + '?embed[]=cast&embed[]=seasons').then(function(response) {
+                                        if (!response.ok) {
+                                            renderDetails(result, tmdbDetails, data[1].results, credits);
+                                            return;
+                                        }
+                                        return response.json();
+                                    }).then(function(showDetails) {
+                                        var tvMazeCredits = (showDetails && showDetails._embedded && showDetails._embedded.cast) ? showDetails._embedded.cast.slice(0, 6).map(function(actor) {
+                                            return { name: actor && actor.person ? actor.person.name : 'Unknown actor' };
+                                        }) : [];
+                                        var mappedResult = mapTvMazeShowToTmdbShape(showDetails || show);
+                                        var combinedCredits = credits.length ? credits : tvMazeCredits;
+
+                                        if (mappedResult && (!(tmdbDetails.seasons && tmdbDetails.seasons.length) || credits.length === 0)) {
+                                            renderDetails(mappedResult, mappedResult, [], combinedCredits);
+                                            return;
+                                        }
+
+                                        renderDetails(result, tmdbDetails, data[1].results, combinedCredits);
+                                    }).catch(function() {
+                                        renderDetails(result, tmdbDetails, data[1].results, credits);
+                                    });
+                                }).catch(function() {
+                                    renderDetails(result, tmdbDetails, data[1].results, credits);
+                                });
+                            });
+                        }
+
+                        return Promise.all(detailRequests).then(function(data) {
+                            var credits = (data[2] && data[2].cast) ? data[2].cast : [];
+                            renderDetails(result, data[0], data[1].results, credits);
                         });
                     })
                     .catch(function() {
@@ -516,12 +751,51 @@ const NEXTSTREAM_CONFIG = {
                 if (event.key === 'Escape') { closeDetails(); }
             });
 
+            function openTrailerFromDetails(trigger) {
+                var mediaType = trigger.attr('data-media-type');
+                var mediaId = trigger.attr('data-media-id');
+                var title = decodeURIComponent(trigger.attr('data-title') || '');
+
+                if (!mediaType || !mediaId) {
+                    return;
+                }
+
+                fetch(TMDB_CONFIG.baseUrl + '/' + mediaType + '/' + mediaId + '/videos?api_key=' + encodeURIComponent(TMDB_CONFIG.apiKey) + '&language=en-US')
+                    .then(function(response) {
+                        if (!response.ok) {
+                            throw new Error('TMDB trailer fetch failed');
+                        }
+                        return response.json();
+                    })
+                    .then(function(data) {
+                        var trailer = (data && data.results || []).filter(function(video) {
+                            return video.site === 'YouTube' && video.key && (video.type === 'Trailer' || video.type === 'Teaser');
+                        }).sort(function(first, second) {
+                            return Number(second.official) - Number(first.official);
+                        })[0];
+
+                        if (!trailer) {
+                            window.alert('No trailer is available for this title yet.');
+                            return;
+                        }
+
+                        lastPlaybackTitle = '';
+                        openPlayer('https://www.youtube.com/embed/' + encodeURIComponent(trailer.key) + '?autoplay=1&rel=0');
+                    })
+                    .catch(function() {
+                        window.alert('The trailer could not be loaded right now.');
+                    });
+            }
+
             detailModal.on('click', '.title-detail-play', function() {
                 var mediaType = jQuery(this).attr('data-media-type');
                 var mediaId = jQuery(this).attr('data-media-id');
                 var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
-                detailModal.addClass('is-playing');
                 openMediaPlayback(mediaType, mediaId, title);
+            });
+
+            detailModal.on('click', '.title-detail-trailer-toggle', function() {
+                openTrailerFromDetails(jQuery(this));
             });
 
             detailModal.on('change', '.title-detail-season-select', function() {
@@ -537,7 +811,6 @@ const NEXTSTREAM_CONFIG = {
                 var title = decodeURIComponent(jQuery(this).attr('data-title') || '');
                 var season = jQuery(this).attr('data-season');
                 var episode = jQuery(this).attr('data-episode');
-                detailModal.addClass('is-playing');
                 openMediaPlayback(mediaType, mediaId, title, season, episode);
             });
         }
