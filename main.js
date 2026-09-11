@@ -425,7 +425,7 @@ const TVMAZE_CONFIG = {
         }
 
         function setupVideoPlayer() {
-            var playerModal = jQuery('<div class="video-player-modal" aria-hidden="true"><div class="video-player-dialog" role="dialog" aria-modal="true"><button type="button" class="video-player-close" aria-label="Close video">&times;</button><iframe class="video-player" title="Video player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div></div>');
+            var playerModal = jQuery('<div class="video-player-modal" aria-hidden="true"><div class="video-player-dialog" role="dialog" aria-modal="true"><div class="video-provider-switch"><button type="button" class="video-provider-button" data-provider="cinesrc">CineSrc</button><button type="button" class="video-provider-button" data-provider="vidking">VidKing</button></div><button type="button" class="video-player-close" aria-label="Close video">&times;</button><iframe class="video-player" title="Video player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div></div>');
             globalPlayerModal = playerModal;
             globalPlayerFrame = playerModal.find('.video-player');
             jQuery('body').append(playerModal);
